@@ -34,12 +34,14 @@ class DExperts(nn.Module):
         expert_model: Union[str, Path, GPT2PreTrainedModel] = None,
         tokenizer: str = 'gpt2', 
     ):
+        super(DExperts, self).__init__()
         # Set up device
         self.device = args.device
         self.base_model = GPT2LMHeadModel.from_pretrained(base_model).to(self.device)
         self.antiexpert = GPT2LMHeadModel.from_pretrained(antiexpert_model).to(self.device)
         self.expert = GPT2LMHeadModel.from_pretrained(expert_model).to(self.device)
         self.tokenizer = tokenizer
+        self.tokenizer.pad_token_id = STOP_TOKEN
         assert self.tokenizer.eos_token_id == self.tokenizer.pad_token_id
 
     def __repr__(self):
@@ -63,10 +65,6 @@ class DExperts(nn.Module):
         use_cache=True
         ):
         device = next(self.parameters()).device
-        encodings_dict = self.tokenizer.batch_encode_plus(prompt, pad_to_max_length=True, return_tensors='pt')
-
-        input_ids = encodings_dict['input_ids'].to(self.device)
-        attention_mask = encodings_dict['attention_mask'].to(self.device)
         batch_size, input_seq_len = input_ids.shape
 
         position_ids = attention_mask.cumsum(dim=1) - 1
@@ -83,21 +81,21 @@ class DExperts(nn.Module):
             step += 1
             # base model prediction
             output = self.base_model(
-                input_ids, attention_mask=attention_mask, position_ids=position_ids, **model_kwargs)
+                input_ids, attention_mask=attention_mask, position_ids=position_ids, return_dict=True, use_cache=True)
             base_logits, base_past = output.logits, output.past_key_values
 
             # expert prediction
             if self.expert:
                 expert_output = self.expert(
-                    input_ids, attention_mask=attention_mask, position_ids=position_ids, **model_kwargs)
+                input_ids, attention_mask=attention_mask, position_ids=position_ids, return_dict=True, use_cache=True)
                 expert_logits, expert_past = expert_output.logits, expert_output.past_key_values
             else:
                 expert_logits = base_logits
 
             # antiexpert prediction
             if self.antiexpert:
-                antiexpert_output = self.expert(
-                    input_ids, attention_mask=attention_mask, position_ids=position_ids, **model_kwargs)
+                antiexpert_output = self.antiexpert(
+                input_ids, attention_mask=attention_mask, position_ids=position_ids, return_dict=True, use_cache=True)
                 antiexpert_logits, antiexpert_past = antiexpert_output.logits, antiexpert_output.past_key_values
             else:
                 antiexpert_logits = base_logits
@@ -125,8 +123,8 @@ class DExperts(nn.Module):
                 # Temperature (higher temperature => more likely to sample low probability tokens)
                 if temperature != 1.0:
                     next_token_logits = next_token_logits / temperature
-                if k > 0 or p < 1.0:
-                    next_token_logits = top_k_top_p_filtering(next_token_logits, top_k=k, top_p=p)
+                if top_k > 0 or top_p < 1.0:
+                    next_token_logits = top_k_top_p_filtering(next_token_logits, top_k=top_k, top_p=top_p)
                 # Sample
                 probs = F.softmax(next_token_logits, dim=-1)
                 next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
@@ -147,7 +145,7 @@ class DExperts(nn.Module):
                 break
             '''
             # Update input_ids, attention_mask and position_ids
-            input_ids = torch.cat([input_ids, tokens_to_add.unsqueeze(-1)], dim=-1)
+            input_ids = torch.cat([input_ids, next_tokens.unsqueeze(-1)], dim=-1)
             attention_mask = torch.cat([attention_mask, attention_mask.new_ones((batch_size, 1))], dim=1)
             position_ids = torch.cat([position_ids, (position_ids[:, -1] + 1).unsqueeze(-1)], dim=1)
             cur_len += 1

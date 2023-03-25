@@ -22,7 +22,7 @@ SMALL_CONST = 1e-10
 BIG_CONST = -1e15
 
 
-def top_k_top_p_filtering(self,
+def top_k_top_p_filtering(
         logits,
         top_k = 0,
         top_p = 1.0,
@@ -64,7 +64,7 @@ def top_k_top_p_filtering(self,
     return logits
 
 
-def enforce_repetition_penalty(self, lprobs, batch_size, prev_output_tokens, repetition_penalty, num_beams=1):
+def enforce_repetition_penalty(lprobs, batch_size, prev_output_tokens, repetition_penalty, num_beams=1):
     """repetition penalty (from CTRL paper https://arxiv.org/abs/1909.05858). """
     for i in range(batch_size * num_beams):
         for previous_token in set(prev_output_tokens[i].tolist()):

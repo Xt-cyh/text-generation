@@ -15,6 +15,7 @@ import mauve
 import json
 import nltk
 import os
+import re
 
 
 ##############################  dataset  #############################
@@ -244,7 +245,7 @@ def calc_self_bleu(test_corpus, max_ngram=4):
     for i in range(len(test_corpus)):
         test_corpus[i] = test_corpus[i].split()
 
-    for i in range(len(test_corpus)):
+    for i in tqdm(range(len(test_corpus))):
         reference = test_corpus[:i] + test_corpus[i+1:]
         hypothesis = test_corpus[i]
 

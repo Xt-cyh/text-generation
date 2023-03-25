@@ -157,15 +157,16 @@ if __name__ == '__main__':
     parser.add_argument("--prompt_len", default=10, type=int)
     parser.add_argument("--prompt_mid_size", default=500, type=int)
     # DExpert
-    parser.add_argument("--expert", type=str, default="../DExperts/model/experts/sentiment/finetuned_gpt2_positive")
-    parser.add_argument("--antiexpert", type=str, default="../DExperts/model/experts/sentiment/finetuned_gpt2_positive")
+    parser.add_argument("--expert", type=str, default="../DExperts/model/experts/sentiment/large/finetuned_gpt2_positive")
+    parser.add_argument("--antiexpert", type=str, default="../DExperts/model/experts/sentiment/large/finetuned_gpt2_negative")
     parser.add_argument("--alpha", type=float, default=1.0)
     # files and gpu
     parser.add_argument("--model_dir", type=str, default='./output/prompt_tuning/neg-prefixlen-10-bs-4-epoch-1.pth')
     parser.add_argument("--data_dir", type=str, default='../datasets/')
     parser.add_argument("--data_file", type=str, default='IMDb/IMDb_pos.txt')
     parser.add_argument("--prompt_dir", type=str, default='../prompts/prompts/sentiment_prompts-10k/')
-    parser.add_argument("--output_dir", type=str, default='./results/contrary_prompts')
+    parser.add_argument("--output_dir", type=str, default='./results/contrary_prompts/')
+    parser.add_argument("--gpudevice", type=str, default='0')
     parser.add_argument("--device", type=str, default='cuda')
     parser.add_argument('--local_rank', default=0, type=int, help='node rank for distributed training')
     parser.add_argument('--gpus', default=1, type=int, help='number of gpus per node')
@@ -178,11 +179,12 @@ if __name__ == '__main__':
     parser.add_argument("--min_len", default=30, type=int)
     parser.add_argument("--length_penalty", default=1, type=int)
     parser.add_argument("--repetition_penalty", default=1, type=int)
+    parser.add_argument("--temperature", default=1.0, type=float)
 
     args = parser.parse_args()
     set_seed(args)
 
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
+    os.environ['CUDA_VISIBLE_DEVICES'] = args.gpudevice
     '''
     args.world_size = args.gpus * args.nodes
     torch.distributed.init_process_group('nccl', init_method='env://')
