@@ -6,7 +6,7 @@ def detect_toxic(text):
 
     # Replace with your own Perspective API key
     # https://console.cloud.google.com/apis/credentials?project=detoxic-381613
-    API_KEY = 'AIzaSyCHiDw7uBVJoGvGgzcrlQ4MwGYnQPg0wNU'
+    API_KEY = 'AIzaSyBI4uQ4-8PAprclz_vaFEqetUSvjFa00ok'
 
     client = discovery.build(
         "commentanalyzer",

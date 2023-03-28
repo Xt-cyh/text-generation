@@ -70,13 +70,15 @@ class DExperts(nn.Module):
         position_ids = attention_mask.cumsum(dim=1) - 1
         unfinished_sents = torch.ones(batch_size, dtype=torch.long, device=self.device)
         cur_len, step = input_ids.shape[1], 0
+        context_len = input_ids.shape[1]
 
         self.base_model.eval()
         if self.expert:
             self.expert.eval()
         if self.antiexpert:
             self.antiexpert.eval()
-
+        
+        # generate length mode：1.fixed length with prompt 2.fixed length without prompt
         while cur_len <= max_length:
             step += 1
             # base model prediction

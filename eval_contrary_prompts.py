@@ -82,10 +82,14 @@ def generate_eval(args, model, prompts):
     target = labels[args.label]
 
     results = []
+    results_withprompt = []
     # input prefix
     for context in tqdm(prompts):
         context_tokens = tokenizer(context, return_tensors='pt')
         input_ids = context_tokens.input_ids
+        # context len + ' '
+        context_len = len(context)+1
+
         attention_mask = context_tokens.attention_mask
         input_ids = input_ids.expand(args.batch_size, -1).to(args.device)
         attention_mask = attention_mask.expand(args.batch_size, -1).to(args.device)
@@ -103,13 +107,16 @@ def generate_eval(args, model, prompts):
                 top_k=topk, top_p=topp, temperature=temperature, 
                 max_length=max_len, min_length=min_len, use_cache=use_cache
             )
-        results.extend(tokenizer.batch_decode(
-            output.cpu(), skip_special_tokens=True
-        ))
+        # output without the context
+        output = tokenizer.batch_decode(output.cpu(), skip_special_tokens=True)
+        results_withprompt.extend(output)
+        for i in range(args.batch_size):
+            output[i] = output[i][context_len:]
+        results.extend(output)
 
     # perplexity
-    ppl = cal_ppl(results, args.device)
-    # accuracy
+    ppl = cal_ppl(results_withprompt, args.device)
+    # accuracy: without context
     class_num = args.class_num
     model_2classes = "distilbert-base-uncased-finetuned-sst-2-english"
     cls_tokenizer = AutoTokenizer.from_pretrained(model_2classes)
@@ -118,10 +125,11 @@ def generate_eval(args, model, prompts):
     accuracy = eval_classify_acc(results, classifier, cls_tokenizer, class_num, target, args.device)
     # dist-n
     dist = [0] * 3
-    for n in range(1, 4):
-        dist[n-1] = calc_dist_n(results, n)
+    #for n in range(1, 4):
+    #    dist[n-1] = calc_dist_n(results, n)
     # self_bleu
-    sbl = calc_self_bleu(results)
+    #sbl = calc_self_bleu(results)
+    sbl=0
     return results, ppl, accuracy, dist, sbl
 
 
@@ -175,8 +183,8 @@ if __name__ == '__main__':
     # generate args
     parser.add_argument("--top_k", default=200, type=int)
     parser.add_argument("--top_p", default=1.0, type=float)
-    parser.add_argument("--max_len", default=30, type=int)
-    parser.add_argument("--min_len", default=30, type=int)
+    parser.add_argument("--max_len", default=50, type=int)
+    parser.add_argument("--min_len", default=50, type=int)
     parser.add_argument("--length_penalty", default=1, type=int)
     parser.add_argument("--repetition_penalty", default=1, type=int)
     parser.add_argument("--temperature", default=1.0, type=float)
@@ -240,7 +248,7 @@ if __name__ == '__main__':
         avgdist[i] = positive_dist[i]*0.25 + neutral_dist[i]*0.5 + negative_dist[i]*0.25
 
     if args.method != 'gpt':
-        save_path = os.path.join(args.output_dir, '{}/{}_len{}_topk{}_{}.jsonl'.format(args.method, args.label, max_len, topk, target))
+        save_path = os.path.join(args.output_dir, '{}/{}_len{}_topk{}_{}_noprompt.jsonl'.format(args.method, args.label, max_len, topk, target))
     else:
         save_path = os.path.join(args.output_dir, '{}_len{}_topk{}_{}.jsonl'.format(args.label, max_len, topk, target))
 

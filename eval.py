@@ -228,7 +228,7 @@ def cal_dist(txts, n):
 
 def calc_dist_n(texts, n):
     ngrams = []
-    for text in texts:
+    for text in tqdm(texts):
         # 将文本转换为n-gram序列
         words = re.findall(r'\w+', text.lower())  # 将文本中的单词转换为小写，并去除标点符号和空格
         ngrams.extend(zip(*[words[i:] for i in range(n)]))
