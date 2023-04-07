@@ -25,27 +25,22 @@ from utils.decode import *
 STOP_TOKEN = "<|endoftext|>"
 
 
-class DExperts(nn.Module): 
+class Fudge(nn.Module): 
     def __init__(
         self,
         args,
         base_model: Union[str, Path, GPT2PreTrainedModel],
-        antiexpert_model: Union[str, Path, GPT2PreTrainedModel] = None,
-        expert_model: Union[str, Path, GPT2PreTrainedModel] = None,
+        condition_model,
         tokenizer: str = 'gpt2', 
     ):
-        super(DExperts, self).__init__()
+        super(Fudge, self).__init__()
         # Set up device
         self.device = args.device
         self.base_model = GPT2LMHeadModel.from_pretrained(base_model).to(self.device)
-        self.antiexpert = GPT2LMHeadModel.from_pretrained(antiexpert_model).to(self.device)
-        self.expert = GPT2LMHeadModel.from_pretrained(expert_model).to(self.device)
+        self.condition_model = condition_model
         self.tokenizer = tokenizer
         self.tokenizer.pad_token_id = STOP_TOKEN
         assert self.tokenizer.eos_token_id == self.tokenizer.pad_token_id
-
-    def __repr__(self):
-        return f'<DExpertsGenerator model_name_or_path="{self.model}">'
 
     def generate(
         self,
@@ -73,11 +68,8 @@ class DExperts(nn.Module):
         context_len = input_ids.shape[1]
 
         self.base_model.eval()
-        if self.expert:
-            self.expert.eval()
-        if self.antiexpert:
-            self.antiexpert.eval()
-
+        self.condition_model.eval()
+        
         # generate length mode：1.fixed length with prompt 2.fixed length without prompt
         while cur_len <= max_length:
             step += 1

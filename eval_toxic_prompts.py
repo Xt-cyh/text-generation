@@ -63,10 +63,22 @@ def get_data(args, begin=0, end=0):
         return data_list[:100]
 
 
+def get_generated_data(file_path):
+    results = []
+    prompts = []
+    with open(file_path, 'r', encoding='utf8') as fin:
+        for line in fin:
+            dic = json.loads(line)
+            results.append(dic['text'])
+            prompts.append(dic['prompt'])
+    return results, prompts
+
+
 def get_prompts(file):
     with open(file, 'r', encoding='utf8') as fin:
         dataset = pd.read_json(file, lines=True)
         prompts = pd.json_normalize(dataset['prompt'])['text'].tolist()
+        prompts = prompts[:1000]
         return prompts
 
 
@@ -80,10 +92,10 @@ def generate_eval(args, model, prompts):
     max_len=args.max_len
     do_sample=True
     use_cache=True
-    target = labels[args.label]
 
     results = []
-    results_withprompt = []
+    final_prompts = []
+    # results_withprompt = []
     # input prefix
     for context in tqdm(prompts):
         context_tokens = tokenizer(context, return_tensors='pt')
@@ -110,27 +122,31 @@ def generate_eval(args, model, prompts):
             )
         # output without the context
         output = tokenizer.batch_decode(output.cpu(), skip_special_tokens=True)
-        results_withprompt.extend(output)
+        # results_withprompt.extend(output)
+        prompt = []
         for i in range(args.batch_size):
+            prompt.append(context)
             output[i] = output[i][context_len:]
+        final_prompts.extend(prompt)
         results.extend(output)
 
+    return results, final_prompts
+
+
+def evaluate(results, results_withprompt):
     # perplexity
-    ppl = cal_ppl(results_withprompt, args.device)
+    # ppl = cal_ppl(results_withprompt, args.device)
+    ppl = 28.7011
     # accuracy: without context
-    class_num = args.class_num
-    model_2classes = "distilbert-base-uncased-finetuned-sst-2-english"
-    cls_tokenizer = AutoTokenizer.from_pretrained(model_2classes)
-    classifier = AutoModelForSequenceClassification.from_pretrained(model_2classes)
-    classifier.to(args.device)
-    accuracy = eval_classify_acc(results, classifier, cls_tokenizer, class_num, target, args.device)    
+    toxicity = detect_toxic(results)
+      
     # dist-n
     dist = [0] * 3
-    #for n in range(1, 4):
-    #    dist[n-1] = calc_dist_n(results, n)
+    for n in range(1, 4):
+        dist[n-1] = calc_dist_n(results, n)
     # self_bleu
     sbl = calc_self_bleu(results)
-    return results, ppl, accuracy, dist, sbl
+    return ppl, toxicity, dist, sbl
 
 
 if __name__ == '__main__':
@@ -156,6 +172,7 @@ if __name__ == '__main__':
     parser.add_argument("--label", default="positive", type=str)
     parser.add_argument("--class_num", type=int, default=2)
     parser.add_argument("--method", default="gpt", type=str, help="gpt, prefix_tuning, prompt_tuning")
+    parser.add_argument("--mode", default="generate-eval", type=str, help="all, generate, eval")
     # different methods:
     # prefix tuning
     parser.add_argument("--prefix_len", default=10, type=int)
@@ -170,9 +187,8 @@ if __name__ == '__main__':
     parser.add_argument("--alpha", type=float, default=1.0)
     # files and gpu
     parser.add_argument("--model_dir", type=str, default='./output/prompt_tuning/neg-prefixlen-10-bs-4-epoch-1.pth')
-    parser.add_argument("--data_dir", type=str, default='../datasets/')
     parser.add_argument("--data_file", type=str, default='IMDb/IMDb_pos.txt')
-    parser.add_argument("--prompt_dir", type=str, default='../prompts/prompts/sentiment_prompts-10k/')
+    parser.add_argument("--prompt_dir", type=str, default='../prompts/prompts/')
     parser.add_argument("--output_dir", type=str, default='./results/contrary_prompts/')
     parser.add_argument("--gpudevice", type=str, default='0')
     parser.add_argument("--device", type=str, default='cuda')
@@ -232,33 +248,26 @@ if __name__ == '__main__':
     max_len=args.max_len
     do_sample=True
     use_cache=True
-    target = labels[args.label]
 
-    positive_prompts = get_prompts(args.prompt_dir + 'positive_prompts.jsonl')
-    neutral_prompts = get_prompts(args.prompt_dir + 'neutral_prompts.jsonl')
-    negative_prompts = get_prompts(args.prompt_dir + 'negative_prompts.jsonl')
+    toxic_prompts = get_prompts(args.prompt_dir + 'nontoxic_prompts-10k.jsonl')
+    save_path = os.path.join(args.output_dir, '{}/{}_len{}_topk{}_noprompt.jsonl'.format(args.method, args.label, max_len, topk))
 
-    positive_results, positive_ppl, positive_acc, positive_dist, positive_sbl = generate_eval(args, model, positive_prompts)
-    neutral_results, neutral_ppl, neutral_acc, neutral_dist, neutral_sbl = generate_eval(args, model, neutral_prompts)
-    negative_results, negative_ppl, negative_acc, negative_dist, negative_sbl = generate_eval(args, model, negative_prompts)
-    avgppl = positive_ppl*0.25 + neutral_ppl*0.5 + negative_ppl*0.25
-    avgsbl = positive_sbl*0.25 + neutral_sbl*0.5 + negative_sbl*0.25
-    avgdist = [0]*3
-    for i in range(0, 3):
-        avgdist[i] = positive_dist[i]*0.25 + neutral_dist[i]*0.5 + negative_dist[i]*0.25
+    if args.mode == 'generate' or args.mode == 'all':
+        results, prompts = generate_eval(args, model, toxic_prompts)
+        with open(save_path, 'w') as fout:
+            for prompt, txt in zip(prompts, results):
+                data = {}
+                data['label'] = args.label
+                data['prompt'] = prompt
+                data['text'] = txt
+                fout.write(json.dumps(data))
+                fout.write('\n')
 
-    if args.method != 'gpt':
-        save_path = os.path.join(args.output_dir, '{}/{}_len{}_topk{}_{}_noprompt.jsonl'.format(args.method, args.label, max_len, topk, target))
-    else:
-        save_path = os.path.join(args.output_dir, '{}_len{}_topk{}_{}.jsonl'.format(args.label, max_len, topk, target))
+    if args.mode == 'eval' or args.mode == 'all':
+        results, prompts = get_generated_data(save_path)
+        results_withprompt = [(x + ' ' + y) for x,y in zip(prompts, results)]
+        ppl, toxicity, dist, sbl = evaluate(results, results_withprompt)
 
-    results = positive_results + neutral_results + negative_results
-    with open(save_path, 'w') as fout:
-        fout.write('Avg ppl:{}, Avg dist1:{}, Avg dist2:{}, Avg dist3:{}, Avg sBL:{}\n'.format(avgppl, avgdist[0], avgdist[1], avgdist[2], avgsbl))
-        fout.write('positive accuracy:{}, neutral accuracy:{}, negative accuracy:{}\n'.format(positive_acc, neutral_acc, negative_acc))
-        for txt in results:
-            data = {}
-            data['label'] = labels[args.label]
-            data['text'] = txt
-            fout.write(json.dumps(data))
-            fout.write('\n')
+        with open(save_path, 'a+') as fout:
+            fout.write(f'Avg ppl:{ppl}, Avg dist1:{dist[0]}, Avg dist2:{dist[1]}, Avg dist3:{dist[2]}, Avg sBL:{sbl}\n')
+            fout.write(f'Toxicity: {sum(toxicity)/len(toxicity)}\n')

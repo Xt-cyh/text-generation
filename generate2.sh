@@ -1,6 +1,6 @@
 # bash
 # labels=("world" "sport" "business" "sci")
-labels=("positive") #  "negative"
+labels=("negative") #  "positive"
 method="prompt_tuning"
 epoch=2
 

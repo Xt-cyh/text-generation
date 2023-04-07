@@ -7,6 +7,7 @@ from transformers import AutoTokenizer, RobertaTokenizer
 from torch.nn import CrossEntropyLoss
 from torch.nn.functional import softmax
 from datasets import load_dataset, Dataset
+from utils.perspective import detect_toxic
 from torch.utils import data
 from tqdm import tqdm
 import numpy as np
@@ -67,6 +68,34 @@ def padding_classifer_fn(datalist):
     return batch
 
 
+def read(args):
+    # 读取文件
+    data_list = []
+    file = args.file.split('.')
+    file_path = os.path.join(args.dir, args.file)
+    if file[1] == 'json':
+        with open(file_path, 'r', encoding='utf8') as fin:
+            for line in fin:
+                # load: 针对文件 loads：针对字符串
+                dic = json.loads(line)
+                # data_list.extend(dic['pos'])
+                for txt in dic['pos']:
+                    # 去除起始符
+                    data_list.append(txt[13:])
+    elif file[1] == 'txt':
+        with open(file_path, 'r', encoding='utf8') as fin:
+            for line in fin:
+                data_list.append(line)
+    elif file[1] == 'jsonl':
+        with open(file_path, 'r', encoding='utf8') as fin:
+            fin.readline()
+            fin.readline()
+            for line in fin:
+                dic = json.loads(line)
+                data_list.append(dic['text'])
+    return data_list
+
+
 ############################  accuracy  #############################
 def eval_classify_acc(eval_data, classifier, tokenizer, class_num, tar_att, device):
     eval_dataset = tokendataset(eval_data, tokenizer)
@@ -106,6 +135,11 @@ def eval_classify_acc(eval_data, classifier, tokenizer, class_num, tar_att, devi
 
 def eval_latent_classify_acc():
     pass
+
+
+def eval_toxicity(data_list):
+    response = detect_toxic(data_list)
+    return sum(response) / len(response)
 
 
 ##############################  perplexity  #############################
@@ -204,28 +238,6 @@ def mauve():
 
 
 ##############################  diversity  ################################
-def cal_dist(txts, n):
-    dist_n = 0
-    exceptions = 0
-    for sent in txts:
-        wordlist = sent.split(' ')
-        tot_ngram = len(wordlist)-n+1
-        if tot_ngram <= 0:
-            exceptions += 1
-            continue
-        ngram_dic = {}
-        for i in range(0, tot_ngram):
-            ngram = ''
-            for j in range(0, n):
-                ngram += wordlist[i+j]
-            if ngram in ngram_dic.keys():
-                ngram_dic[ngram] = 0
-            else:
-                ngram_dic[ngram] = 1
-        dist_n += sum(ngram_dic.values()) / tot_ngram
-    return dist_n / (len(txts) - exceptions)
-
-
 def calc_dist_n(texts, n):
     ngrams = []
     for text in tqdm(texts):
@@ -262,37 +274,14 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", type=str, default='all')
     parser.add_argument("--device", type=str, default='cuda')
-    parser.add_argument("--dir", type=str, default='../GPT2/results/')
-    parser.add_argument("--file", type=str, default='len30_topk200_imdb_2.jsonl')
+    parser.add_argument("--dir", type=str, default='./results/contrary_prompts/DExperts/')
+    parser.add_argument("--file", type=str, default='positive_len50_topk200_1_noprompt.jsonl')
     parser.add_argument("--class_num", type=int, default=2)
     args = parser.parse_args()
 
     os.environ['CUDA_VISIBLE_DEVICES'] = '3'
 
-    # 读取文件
-    data_list = []
-    file = args.file.split('.')
-    file_path = os.path.join(args.dir, args.file)
-    if file[1] == 'json':
-        with open(file_path, 'r', encoding='utf8') as fin:
-            for line in fin:
-                # load: 针对文件 loads：针对字符串
-                dic = json.loads(line)
-                # data_list.extend(dic['pos'])
-                for txt in dic['pos']:
-                    # 去除起始符
-                    data_list.append(txt[13:])
-
-    elif file[1] == 'txt':
-        with open(file_path, 'r', encoding='utf8') as fin:
-            for line in fin:
-                data_list.append(line)
-
-    elif file[1] == 'jsonl':
-        with open(file_path, 'r', encoding='utf8') as fin:
-            for line in fin:
-                dic = json.loads(line)
-                data_list.append(dic['text'])
+    data_list = read(args)
 
     # 评估模式
     if args.mode == 'ppl' or args.mode == 'all':
@@ -318,6 +307,10 @@ if __name__ == '__main__':
         target = int(file[0][-1])
         result = eval_classify_acc(data_list, classifier, cls_tokenizer, class_num, target, args.device)
         print('sentiment: {} acc: {}'.format(target, result))
+
+    if args.mode == 'toxic' or args.mode == 'all':
+        data_list = data_list[:101]
+        print(f'toxicity: {detect_toxic(data_list)}')
 
     if args.mode == 'dist' or args.mode == 'all':
         for n in range(1, 4):
