@@ -1,11 +1,8 @@
 import torch
-# from gpt2 import GPT2LMHeadModel
 from transformers import GPT2Tokenizer, GPT2Config, GPT2LMHeadModel
 from transformers import get_linear_schedule_with_warmup, AdamW
 from torch.utils.data import Dataset, DataLoader
 from torch.nn import CrossEntropyLoss
-# from prefix_tuning import PrefixGPT2
-# from prompt_tuning import PromptTuning
 from baseGPTmodel.prefix_tuning import PrefixGPT2
 from baseGPTmodel.prompt_tuning import PromptTuning
 
@@ -178,14 +175,15 @@ def main(args):
     else:
         model = decoder
 
-    if args.method != 'gpt':
+    if args.method != 'gpt_ft':
         model.fix_decoder()
     
     # 模型参数量
     get_parameter_number(model)
+    '''
     for name, param in model.named_parameters():
         if param.requires_grad:
-            print(name)
+            print(name)'''
 
     model.to(args.device)
     no_decay = ['bias', 'LayerNorm.weight']
@@ -291,7 +289,9 @@ def main(args):
                 )
                 torch.save(model.state_dict(), output_dir)
             else:
-                output_dir = os.path.join(args.output_dir, '{}-bs-{}-epoch-{}'.format(args.label, args.batch_size * args.gradient_accumulation_steps, current_epoch))
+                output_dir = os.path.join(args.output_dir, '{}/{}-bs-{}-epoch-{}'.format(
+                    args.method, args.label, args.batch_size * args.gradient_accumulation_steps, current_epoch)
+                )
                 model_to_save = (model.module if hasattr(model, 'module') else model)
                 model_to_save.save_pretrained(output_dir)
                 model_config.save_pretrained(output_dir)
@@ -324,7 +324,7 @@ if __name__ == "__main__":
     parser.add_argument("--dev_path", default="../datasets/AGNEWS/train.jsonl", type=str)
     parser.add_argument("--test_path", default="../datasets/IMDb/IMDb.jsonl", type=str)
     parser.add_argument("--label", default="pos", type=str)
-    parser.add_argument("--model_name_or_path", default="gpt2-medium", type=str)
+    parser.add_argument("--model_name_or_path", default="gpt2-large", type=str)
     parser.add_argument("--output_dir", default="./output/", type=str)
     parser.add_argument("--method", default="gpt", type=str, help="gpt, prefix_tuning, prompt_tuning")
     # prefix tuning

@@ -9,6 +9,7 @@ from transformers import GPT2LMHeadModel, BertModel, GPT2Tokenizer, BertTokenize
 from baseGPTmodel.prefix_tuning import PrefixGPT2
 from baseGPTmodel.prompt_tuning import PromptTuning
 from decodingStrategy.DExperts import DExperts
+from decodingStrategy.fudge import Fudge, ClassificationHead
 from utils.perspective import detect_toxic
 
 import datasets
@@ -136,7 +137,7 @@ def generate_eval(args, model, prompts):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--pretrained_encoder", type=str, default="bert-base-uncased")
-    parser.add_argument("--pretrained_decoder", type=str, default="gpt2-medium")
+    parser.add_argument("--pretrained_decoder", type=str, default="gpt2-large")
     parser.add_argument("--no_cuda", action="store_true")
     parser.add_argument("--sampling_num", type=int, default=50, help='针对context，对应生成的文本数')
     parser.add_argument("--context", type=str, default='The last time')
@@ -155,7 +156,7 @@ if __name__ == '__main__':
     )
     parser.add_argument("--label", default="positive", type=str)
     parser.add_argument("--class_num", type=int, default=2)
-    parser.add_argument("--method", default="gpt", type=str, help="gpt, prefix_tuning, prompt_tuning")
+    parser.add_argument("--method", default="gpt2", type=str)
     # different methods:
     # prefix tuning
     parser.add_argument("--prefix_len", default=10, type=int)
@@ -168,6 +169,9 @@ if __name__ == '__main__':
     parser.add_argument("--expert", type=str, default="../DExperts/model/experts/sentiment/large/finetuned_gpt2_positive")
     parser.add_argument("--antiexpert", type=str, default="../DExperts/model/experts/sentiment/large/finetuned_gpt2_negative")
     parser.add_argument("--alpha", type=float, default=1.0)
+    # Fudge
+    parser.add_argument("--condition_model", default="../CAT-PAW/papercode/PPLM/discrim_models/sentiment_classifierhead.pt", type=str)
+
     # files and gpu
     parser.add_argument("--model_dir", type=str, default='./output/prompt_tuning/neg-prefixlen-10-bs-4-epoch-1.pth')
     parser.add_argument("--data_dir", type=str, default='../datasets/')
@@ -212,13 +216,19 @@ if __name__ == '__main__':
         decoder = GPT2LMHeadModel.from_pretrained(args.pretrained_decoder)
         model = PromptTuning(decoder=decoder, decoder_tokenizer=tokenizer, args=args)
         model.load_state_dict(torch.load(args.model_dir))
-    elif args.method == 'gpt':
+    elif args.method =='gpt2':
+        model = GPT2LMHeadModel.from_pretrained(args.pretrained_decoder)
+    elif args.method == 'gpt2_ft':
         model = GPT2LMHeadModel.from_pretrained(args.model_dir)
     elif args.method == 'DExperts':
         model = DExperts(
             args=args, base_model = args.pretrained_decoder, tokenizer=tokenizer,
             expert_model = args.expert, antiexpert_model=args.antiexpert
         )
+    elif args.method == 'Fudge':
+        conditioning_model = ClassificationHead(class_size=5, embed_size=1024).to(args.device)
+        conditioning_model.load_state_dict(torch.load(args.condition_model))
+        model = Fudge(args=args, base_model = args.pretrained_decoder, tokenizer=tokenizer, conditional_model)
     model.to(args.device)
     model.eval()
 
