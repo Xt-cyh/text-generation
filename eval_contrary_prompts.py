@@ -4,8 +4,7 @@ import torch
 import torch.nn.functional as F
 import transformers
 from transformers import GPT2LMHeadModel, BertModel, GPT2Tokenizer, BertTokenizer
-# from prefix_tuning import PrefixGPT2
-# from prompt_tuning import PromptTuning
+
 from baseGPTmodel.prefix_tuning import PrefixGPT2
 from baseGPTmodel.prompt_tuning import PromptTuning
 from decodingStrategy.DExperts import DExperts
@@ -226,9 +225,9 @@ if __name__ == '__main__':
             expert_model = args.expert, antiexpert_model=args.antiexpert
         )
     elif args.method == 'Fudge':
-        conditioning_model = ClassificationHead(class_size=5, embed_size=1024).to(args.device)
-        conditioning_model.load_state_dict(torch.load(args.condition_model))
-        model = Fudge(args=args, base_model = args.pretrained_decoder, tokenizer=tokenizer, conditional_model)
+        condition_model = ClassificationHead(class_size=5, embed_size=1024).to(args.device)
+        condition_model.load_state_dict(torch.load(args.condition_model))
+        model = Fudge(args=args, base_model = args.pretrained_decoder, tokenizer=tokenizer, condition_model=condition_model)
     model.to(args.device)
     model.eval()
 

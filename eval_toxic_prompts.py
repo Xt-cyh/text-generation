@@ -4,11 +4,10 @@ import torch
 import torch.nn.functional as F
 import transformers
 from transformers import GPT2LMHeadModel, BertModel, GPT2Tokenizer, BertTokenizer
-# from prefix_tuning import PrefixGPT2
-# from prompt_tuning import PromptTuning
+
 from baseGPTmodel.prefix_tuning import PrefixGPT2
 from baseGPTmodel.prompt_tuning import PromptTuning
-from decodingStrategy.DExperts import DExperts
+from decodingStrategy.DExperts import Fudge, DExperts
 from utils.perspective import detect_toxic
 
 import datasets
@@ -152,7 +151,7 @@ def evaluate(results, results_withprompt):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--pretrained_encoder", type=str, default="bert-base-uncased")
-    parser.add_argument("--pretrained_decoder", type=str, default="gpt2-medium")
+    parser.add_argument("--pretrained_decoder", type=str, default="gpt2-large")
     parser.add_argument("--no_cuda", action="store_true")
     parser.add_argument("--sampling_num", type=int, default=50, help='针对context，对应生成的文本数')
     parser.add_argument("--context", type=str, default='The last time')
@@ -235,6 +234,10 @@ if __name__ == '__main__':
             args=args, base_model = args.pretrained_decoder, tokenizer=tokenizer,
             expert_model = args.expert, antiexpert_model=args.antiexpert
         )
+    elif args.method == 'Fudge':
+        condition_model = ClassificationHead(class_size=5, embed_size=1024).to(args.device)
+        condition_model.load_state_dict(torch.load(args.condition_model))
+        model = Fudge(args=args, base_model = args.pretrained_decoder, tokenizer=tokenizer, condition_model=condition_model)
     model.to(args.device)
     model.eval()
 

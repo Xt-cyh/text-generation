@@ -154,7 +154,7 @@ def main(args):
     )
     set_seed(args)
 
-    tokenizer = GPT2Tokenizer.from_pretrained('gpt2-medium')
+    tokenizer = GPT2Tokenizer.from_pretrained('gpt2-large')
     args.tokenizer = tokenizer
     
     train_dataset = tokendataset(args, args.data_path, tokenizer=tokenizer)
@@ -175,7 +175,7 @@ def main(args):
     else:
         model = decoder
 
-    if args.method != 'gpt_ft':
+    if args.method != 'gpt2_ft':
         model.fix_decoder()
     
     # 模型参数量
@@ -258,7 +258,7 @@ def main(args):
                 model.zero_grad()
                 global_step += 1
 
-            if args.logging_steps > 0 and global_step % args.logging_steps == 0:
+            if args.logging_steps > 0 and global_step % args.logging_steps == 0 and (step + 1) % args.gradient_accumulation_steps == 0:
                 logs = {}
                 loss_scalar = (tr_loss - logging_loss) / args.logging_steps
                 logs['epoch'] = current_epoch
@@ -267,14 +267,16 @@ def main(args):
                 logging_loss = tr_loss
                 print(logs)
 
-            if global_step % args.save_steps == 0:
-                if args.method != 'gpt':
+            if global_step % args.save_steps == 0 and global_step != 0 :
+                if args.method != 'gpt2':
                     output_dir = os.path.join(args.output_dir, '{}/{}-prefixlen-{}-bs-{}-steps-{}.pth'.format(
                         args.method, args.label, args.prefix_len, args.batch_size * args.gradient_accumulation_steps, global_step)
                     )
                     torch.save(model.state_dict(), output_dir)
                 else:
-                    output_dir = os.path.join(args.output_dir, '{}-bs-{}-steps-{}'.format(args.label, args.batch_size * args.gradient_accumulation_steps, global_step))
+                    output_dir = os.path.join(args.output_dir, '{}/{}-bs-{}-steps-{}'.format(
+                        args.method, args.label, args.batch_size * args.gradient_accumulation_steps, global_step
+                    ))
                     model_to_save = (model.module if hasattr(model, 'module') else model)
                     model_to_save.save_pretrained(output_dir)
                     model_config.save_pretrained(output_dir)
@@ -283,7 +285,7 @@ def main(args):
                 output_dir_list.append(output_dir)
 
         if current_epoch <= args.num_train_epochs:
-            if args.method != 'gpt':
+            if args.method != 'gpt2':
                 output_dir = os.path.join(args.output_dir, '{}/{}-prefixlen-{}-bs-{}-epoch-{}.pth'.format(
                     args.method, args.label, args.prefix_len, args.batch_size * args.gradient_accumulation_steps, current_epoch)
                 )
@@ -299,7 +301,7 @@ def main(args):
             # dev_loss_list.append(dev_loss)
             output_dir_list.append(output_dir)
 
-    logger.info(' global_step = %s, average loss = %s', global_step, tr_loss / global_step)
+    logger.info(' global_step = %s, average loss = %s', global_step, tr_loss / (global_step*args.gradient_accumulation_steps))
     '''
     min_loss = min(dev_loss_list)
     min_index = dev_loss_list.index(min_loss)
@@ -342,10 +344,11 @@ if __name__ == "__main__":
     parser.add_argument("--max_grad_norm", default=1.0, type=float)
     parser.add_argument("--num_train_epochs", default=2, type=int)
     parser.add_argument("--warmup_rate", default=0.1, type=float)
-    parser.add_argument("--logging_steps", default=200, type=int)
+    parser.add_argument("--logging_steps", default=100, type=int)
     parser.add_argument("--seed", default=42, type=int)
     parser.add_argument("--save_steps", default=10000, type=int)
     parser.add_argument("--no_cuda", action="store_true")
+    parser.add_argument("--gpudevice", type=str, default='0')
     parser.add_argument("--device", default='cuda', type=str)
     
     parser.add_argument('--local_rank', default=0, type=int, help='node rank for distributed training')
@@ -354,7 +357,7 @@ if __name__ == "__main__":
     parser.add_argument("--port", default='6677', type=str, help="port")#''''''
     args = parser.parse_args()
 
-    '''os.environ['CUDA_VISIBLE_DEVICES'] = '4'
+    os.environ['CUDA_VISIBLE_DEVICES'] = args.gpudevice
     '''
     os.environ['MASTER_ADDR'] = '127.0.0.1'
     # os.environ['MASTER_PORT'] = args.port  可能会导致无法init
@@ -363,6 +366,7 @@ if __name__ == "__main__":
     torch.distributed.init_process_group('nccl', init_method='env://')
     device = torch.device("cuda:{}".format(args.local_rank))
     args.device = device
+    '''
 
     set_seed(args)
     main(args)

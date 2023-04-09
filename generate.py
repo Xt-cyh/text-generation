@@ -65,7 +65,7 @@ def get_data(args, begin=0, end=0):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--pretrained_encoder", type=str, default="bert-base-uncased")
-    parser.add_argument("--pretrained_decoder", type=str, default="gpt2-medium")
+    parser.add_argument("--pretrained_decoder", type=str, default="gpt2-large")
     parser.add_argument("--no_cuda", action="store_true")
     parser.add_argument("--sampling_num", type=int, default=50, help='针对context，对应生成的文本数')
     parser.add_argument("--context", type=str, default='The last time')
@@ -138,7 +138,9 @@ if __name__ == '__main__':
         decoder = GPT2LMHeadModel.from_pretrained(args.pretrained_decoder)
         model = PromptTuning(decoder=decoder, decoder_tokenizer=tokenizer, args=args)
         model.load_state_dict(torch.load(args.model_dir))
-    elif args.method == 'gpt':
+    elif args.method =='gpt2':
+        model = GPT2LMHeadModel.from_pretrained(args.pretrained_decoder)
+    elif args.method == 'gpt2_ft':
         model = GPT2LMHeadModel.from_pretrained(args.model_dir)
     elif args.method == 'DExperts':
         model = DExperts(
