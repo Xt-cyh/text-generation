@@ -285,7 +285,7 @@ def main(args):
                 output_dir_list.append(output_dir)
 
         if current_epoch <= args.num_train_epochs:
-            if args.method != 'gpt2':
+            if args.method != 'gpt2_ft':
                 output_dir = os.path.join(args.output_dir, '{}/{}-prefixlen-{}-bs-{}-epoch-{}.pth'.format(
                     args.method, args.label, args.prefix_len, args.batch_size * args.gradient_accumulation_steps, current_epoch)
                 )
