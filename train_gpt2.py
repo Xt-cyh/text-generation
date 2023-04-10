@@ -268,7 +268,7 @@ def main(args):
                 print(logs)
 
             if global_step % args.save_steps == 0 and global_step != 0 :
-                if args.method != 'gpt2':
+                if args.method != 'gpt2_ft':
                     output_dir = os.path.join(args.output_dir, '{}/{}-prefixlen-{}-bs-{}-steps-{}.pth'.format(
                         args.method, args.label, args.prefix_len, args.batch_size * args.gradient_accumulation_steps, global_step)
                     )

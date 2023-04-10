@@ -83,6 +83,7 @@ def generate_eval(args, model, prompts):
     target = labels[args.label]
 
     results = []
+    prompts_to_output = []
     results_withprompt = []
     # input prefix
     for context in tqdm(prompts):
@@ -112,8 +113,10 @@ def generate_eval(args, model, prompts):
         output = tokenizer.batch_decode(output.cpu(), skip_special_tokens=True)
         results_withprompt.extend(output)
         for i in range(args.batch_size):
+            prompts_to_output.append(output[i][:context_len])
             output[i] = output[i][context_len:]
         results.extend(output)
+
 
     # perplexity
     ppl = cal_ppl(results_withprompt, args.device)
@@ -124,13 +127,15 @@ def generate_eval(args, model, prompts):
     classifier = AutoModelForSequenceClassification.from_pretrained(model_2classes)
     classifier.to(args.device)
     accuracy = eval_classify_acc(results, classifier, cls_tokenizer, class_num, target, args.device)    
-    # dist-n
+    # dist-n 由于评估时间过长，sample十分之一进行评测
+    lens = len(results) // 10
+    result_sample = random.sample(results, lens)
     dist = [0] * 3
-    #for n in range(1, 4):
-    #    dist[n-1] = calc_dist_n(results, n)
-    # self_bleu
-    sbl = calc_self_bleu(results)
-    return results, ppl, accuracy, dist, sbl
+    for n in range(1, 4):
+        dist[n-1] = calc_dist_n(result_sample, n)
+    # self_bleu 
+    sbl = calc_self_bleu(result_sample)
+    return results, prompts_to_output, ppl, accuracy, dist, sbl
 
 
 if __name__ == '__main__':
@@ -247,27 +252,26 @@ if __name__ == '__main__':
     neutral_prompts = get_prompts(args.prompt_dir + 'neutral_prompts.jsonl')
     negative_prompts = get_prompts(args.prompt_dir + 'negative_prompts.jsonl')
 
-    positive_results, positive_ppl, positive_acc, positive_dist, positive_sbl = generate_eval(args, model, positive_prompts)
-    neutral_results, neutral_ppl, neutral_acc, neutral_dist, neutral_sbl = generate_eval(args, model, neutral_prompts)
-    negative_results, negative_ppl, negative_acc, negative_dist, negative_sbl = generate_eval(args, model, negative_prompts)
+    positive_results, positive_prompts, positive_ppl, positive_acc, positive_dist, positive_sbl = generate_eval(args, model, positive_prompts)
+    neutral_results, neutral_prompts, neutral_ppl, neutral_acc, neutral_dist, neutral_sbl = generate_eval(args, model, neutral_prompts)
+    negative_results, negative_prompts, negative_ppl, negative_acc, negative_dist, negative_sbl = generate_eval(args, model, negative_prompts)
     avgppl = positive_ppl*0.25 + neutral_ppl*0.5 + negative_ppl*0.25
     avgsbl = positive_sbl*0.25 + neutral_sbl*0.5 + negative_sbl*0.25
     avgdist = [0]*3
     for i in range(0, 3):
         avgdist[i] = positive_dist[i]*0.25 + neutral_dist[i]*0.5 + negative_dist[i]*0.25
 
-    if args.method != 'gpt':
-        save_path = os.path.join(args.output_dir, '{}/{}_len{}_topk{}_{}_noprompt.jsonl'.format(args.method, args.label, max_len, topk, target))
-    else:
-        save_path = os.path.join(args.output_dir, '{}_len{}_topk{}_{}.jsonl'.format(args.label, max_len, topk, target))
+    save_path = os.path.join(args.output_dir, '{}/{}_len{}_topk{}_{}_noprompt.jsonl'.format(args.method, args.label, max_len, topk, target))
 
     results = positive_results + neutral_results + negative_results
+    prompts = positive_prompts + neutral_prompts + negative_prompts
     with open(save_path, 'w') as fout:
         fout.write('Avg ppl:{}, Avg dist1:{}, Avg dist2:{}, Avg dist3:{}, Avg sBL:{}\n'.format(avgppl, avgdist[0], avgdist[1], avgdist[2], avgsbl))
         fout.write('positive accuracy:{}, neutral accuracy:{}, negative accuracy:{}\n'.format(positive_acc, neutral_acc, negative_acc))
-        for txt in results:
+        for i in range(len(results)):
             data = {}
             data['label'] = labels[args.label]
-            data['text'] = txt
+            data['prompt'] = prompts[i]
+            data['text'] = results[i]
             fout.write(json.dumps(data))
             fout.write('\n')
