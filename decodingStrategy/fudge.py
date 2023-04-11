@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-from transformers import GPT2Tokenizer, GPT2Config, GPT2LMHeadModel, GPT2PreTrainedModel
+from transformers import GPT2Tokenizer, GPT2Config, GPT2PreTrainedModel
 from transformers import get_linear_schedule_with_warmup, AdamW
 from torch.utils.data import Dataset, DataLoader
 from torch.nn import CrossEntropyLoss
@@ -20,6 +20,7 @@ import os
 
 sys.path.append('..')
 from utils.decode import *
+from decodingStrategy.gpt2_for_fudge import GPT2LMHeadModel
 
 
 STOP_TOKEN = "<|endoftext|>"
@@ -53,6 +54,12 @@ class Fudge(nn.Module):
         # Set up device
         self.device = args.device
         self.base_model = GPT2LMHeadModel.from_pretrained(base_model).to(self.device)
+        self.config = self.base_model.config
+        self.num_layer = self.config.n_layer
+        self.hidden_size = self.config.n_embd
+        self.num_head = self.config.n_head
+        # 返回hidden_states 用于分类
+        self.config.output_hidden_states = True
         self.condition_model = condition_model
         self.tokenizer = tokenizer
         self.tokenizer.pad_token_id = STOP_TOKEN
@@ -82,7 +89,9 @@ class Fudge(nn.Module):
         unfinished_sents = torch.ones(batch_size, dtype=torch.long, device=self.device)
         cur_len, step = input_ids.shape[1], 0
         context_len = input_ids.shape[1]
+        past_key_values = None
         accumulated_hidden_states = 0
+        prev_token = None
 
         self.base_model.eval()
         self.condition_model.eval()
@@ -91,31 +100,42 @@ class Fudge(nn.Module):
         while cur_len <= max_length:
             step += 1
             # base model prediction
-            output = self.base_model(
-                input_ids, attention_mask=attention_mask, position_ids=position_ids, return_dict=True, use_cache=True)
-            base_logits, base_past, hidden_states = output.logits, output.past_key_values, output.hidden_states
-            accumulated_hidden_states += hidden_states.detach().squeeze()
+            if past_key_values is None:
+                # attention_mask=attention_mask, position_ids=position_ids
+                output = self.base_model(input_ids,return_dict=True, use_cache=True)
+                base_logits, past_key_values, hidden_states = output.logits, output.past_key_values, output.hidden_states
+                accumulated_hidden_states = torch.sum(hidden_states.detach(), dim=1).squeeze()
+            else:
+                output = self.base_model(
+                    prev_token, past_key_values=past_key_values, return_dict=True, use_cache=True
+                )
+                base_logits, past_key_values, hidden_states = output.logits, output.past_key_values, output.hidden_states
+                accumulated_hidden_states += hidden_states.detach().squeeze()
 
             # condition model
             probs = torch.softmax(base_logits[:,-1,:].squeeze(), dim=-1) # [tokens=50257]
 
             top_probs, top_indices = torch.topk(probs, top_k, dim=-1)
-            next_hidden_states = model(top_indices.unsqueeze(1), past_key_values=past_key_values, return_dict=True, use_cache=False).hidden_states.detach().squeeze()
+            next_hidden_states = self.base_model(top_indices.unsqueeze(1), past_key_values=past_key_values, return_dict=True, use_cache=False).hidden_states.detach().squeeze()
             # use hidden_state to classify; use top_k next_tokens
-            cond_probs = torch.softmax(conditioning_model((next_hidden_states + accumulated_hidden_states.unsqueeze(0).expand(top_k, 1024)) / (cur_len + 1)), dim=-1)[:,label]
+            cond_probs = torch.softmax(self.condition_model(
+                (next_hidden_states + accumulated_hidden_states.expand(top_k, self.hidden_size)) / (cur_len + 1)
+            ), dim=-1)[:,2]
 
             # fudge
             alpha = torch.tensor(alpha).to(self.device)
             # +? *?
-            ensemble_logits = base_logits + alpha * cond_probs
-
+            # full_probs = torch.exp((torch.log(top_probs) + alpha * torch.log(cond_probs)))
+            ensemble_logits = top_probs + alpha * cond_probs
+            next_token_logits = ensemble_logits.unsqueeze(0)
             # in the first decoding step, we want to use the 'real' last position for each sentence
+            '''
             if step == 0:
                 last_non_masked_idx = torch.sum(attention_mask, dim=1) - 1
                 next_token_logits = ensemble_logits[range(batch_size), last_non_masked_idx, :]
             else:
                 next_token_logits = ensemble_logits[:, -1, :]
-
+            '''
             # repetition penalty
             if repetition_penalty != 1.0:
                 enforce_repetition_penalty(
@@ -148,9 +168,10 @@ class Fudge(nn.Module):
                 break
             '''
             # Update input_ids, attention_mask and position_ids
+            prev_token = next_tokens.unsqueeze(-1)
             input_ids = torch.cat([input_ids, next_tokens.unsqueeze(-1)], dim=-1)
-            attention_mask = torch.cat([attention_mask, attention_mask.new_ones((batch_size, 1))], dim=1)
-            position_ids = torch.cat([position_ids, (position_ids[:, -1] + 1).unsqueeze(-1)], dim=1)
+            # attention_mask = torch.cat([attention_mask, attention_mask.new_ones((batch_size, 1))], dim=1)
+            # position_ids = torch.cat([position_ids, (position_ids[:, -1] + 1).unsqueeze(-1)], dim=1)
             cur_len += 1
 
         #decoded_outputs = [self.tokenizer.decode(output, skip_special_tokens=True, clean_up_tokenization_spaces=True)

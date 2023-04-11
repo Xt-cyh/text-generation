@@ -230,6 +230,9 @@ if __name__ == '__main__':
             expert_model = args.expert, antiexpert_model=args.antiexpert
         )
     elif args.method == 'Fudge':
+        # 由于fudge的生成耗费时间较长，生成的batch_size改为1
+        args.batch_size = 1
+        # 暂时使用PPLM中所使用的分类器；使用medium
         condition_model = ClassificationHead(class_size=5, embed_size=1024).to(args.device)
         condition_model.load_state_dict(torch.load(args.condition_model))
         model = Fudge(args=args, base_model = args.pretrained_decoder, tokenizer=tokenizer, condition_model=condition_model)
