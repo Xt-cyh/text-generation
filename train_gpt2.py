@@ -204,7 +204,7 @@ def main(args):
     loss_fct = CrossEntropyLoss()
     args.loss_fct = loss_fct
     logger.info('start_training')
-    
+
     current_epoch = 0
     dev_loss_list = []
     output_dir_list = []
