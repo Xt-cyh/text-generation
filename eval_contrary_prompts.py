@@ -249,7 +249,6 @@ if __name__ == '__main__':
     max_len=args.max_len
     do_sample=True
     use_cache=True
-    target = labels[args.label]
 
     positive_prompts = get_prompts(args.prompt_dir + 'positive_prompts.jsonl')
     neutral_prompts = get_prompts(args.prompt_dir + 'neutral_prompts.jsonl')
@@ -264,7 +263,7 @@ if __name__ == '__main__':
     for i in range(0, 3):
         avgdist[i] = positive_dist[i]*0.25 + neutral_dist[i]*0.5 + negative_dist[i]*0.25
 
-    save_path = os.path.join(args.output_dir, '{}/{}_len{}_topk{}_{}_noprompt.jsonl'.format(args.method, args.label, max_len, topk, target))
+    save_path = os.path.join(args.output_dir, '{}/{}_len{}_topk{}.jsonl'.format(args.method, args.label, max_len, topk))
 
     results = positive_results + neutral_results + negative_results
     prompts = positive_prompts + neutral_prompts + negative_prompts
