@@ -232,7 +232,7 @@ def main(args):
                 # control_code = ids_to_labels[label[0][0]]
             attention_mask = attention_mask.to(args.device)
             label = torch.tensor(label).to(args.device)
-            
+
             # pdb.set_trace() , use_prefix=args.prefix_tuning
             # output 需要加上control code以初始化prompt
             output = model(input_ids=input_ids, attention_mask=attention_mask, use_cache=True, return_dict=True)

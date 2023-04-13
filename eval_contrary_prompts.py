@@ -7,6 +7,7 @@ from transformers import GPT2LMHeadModel, BertModel, GPT2Tokenizer, BertTokenize
 
 from baseGPTmodel.prefix_tuning import PrefixGPT2
 from baseGPTmodel.prompt_tuning import PromptTuning
+from contextAware.baseline1 import BaseLine1
 from decodingStrategy.DExperts import DExperts
 from decodingStrategy.fudge import Fudge, ClassificationHead
 from utils.perspective import detect_toxic
@@ -67,6 +68,9 @@ def get_prompts(file):
     with open(file, 'r', encoding='utf8') as fin:
         dataset = pd.read_json(file, lines=True)
         prompts = pd.json_normalize(dataset['prompt'])['text'].tolist()
+        # sample
+        # prompt_num = len(prompts)
+        # prompts = random.sample(prompts, prompt_num // 10)
         return prompts
 
 
