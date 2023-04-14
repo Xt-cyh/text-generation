@@ -7,8 +7,8 @@ import os
 
 
 # 设置代理环境变量
-os.environ["http_proxy"] = "http://127.0.0.1:47890"
-os.environ["https_proxy"] = "http://127.0.0.1:47890"
+#os.environ["http_proxy"] = "http://127.0.0.1:47890"
+#os.environ["https_proxy"] = "http://127.0.0.1:47890"
 
 
 def detect_toxic(texts):

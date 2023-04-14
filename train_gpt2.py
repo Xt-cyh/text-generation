@@ -224,15 +224,18 @@ def main(args):
             input_ids = torch.cat([eos_token_ids, input_ids], dim=1).to(args.device)
             eos_token_mask = torch.tensor([1]).expand(args.batch_size, 1)
             attention_mask = torch.tensor(attention_mask)
-            attention_mask = torch.cat([eos_token_mask, attention_mask], dim=1)
-            if args.method == "prefix_tuning":
-                prefix_mask = torch.tensor([1] * args.prefix_len).expand(args.batch_size, args.prefix_len)
-                attention_mask = torch.cat([prefix_mask, attention_mask], dim=1)
-            if args.method in ["prompt_tuning", "baseline1"]:
-                prompt_mask = torch.tensor([1] * args.prompt_len).expand(args.batch_size, args.prompt_len)
-                attention_mask = torch.cat([prompt_mask, attention_mask], dim=1)
-                # control_code = transfer_label(label, tokenizer)
-                # control_code = ids_to_labels[label[0][0]]
+            if args.method == "baseline1":
+                attention_mask = attention_mask
+            else:
+                attention_mask = torch.cat([eos_token_mask, attention_mask], dim=1)
+                if args.method == "prefix_tuning":
+                    prefix_mask = torch.tensor([1] * args.prefix_len).expand(args.batch_size, args.prefix_len)
+                    attention_mask = torch.cat([prefix_mask, attention_mask], dim=1)
+                elif args.method in ["prompt_tuning", "baseline1"]:
+                    prompt_mask = torch.tensor([1] * args.prompt_len).expand(args.batch_size, args.prompt_len)
+                    attention_mask = torch.cat([prompt_mask, attention_mask], dim=1)
+                    # control_code = transfer_label(label, tokenizer)
+                    # control_code = ids_to_labels[label[0][0]]
             attention_mask = attention_mask.to(args.device)
             label = torch.tensor(label).to(args.device)
 

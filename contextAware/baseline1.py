@@ -85,19 +85,24 @@ class BaseLine1(nn.Module):
             with open('/home/cyh/ctg/codes/datasets/SST/SST.jsonl', 'r') as f:
                 for line in f:
                     data = json.loads(line.strip())
-                    if data['label'] == label:
+                    if data['label'] != label:
                         datalist.append(data['text'])
-
+        '''
         choice = random.sample(datalist, self.args.sample_num)
+        choice = [s.split() for s in choice]
         min_len = min(len(s) for s in choice)
         for i in range(self.args.sample_num):
             choice[i] = choice[i][:min_len]
+        '''
+        choice = random.choice(datalist)
         # tokenizer and embedding
-        context_tokens = tokenizer(choice, return_tensors='pt')
+        context_tokens = self.decoder_tokenizer(choice, return_tensors='pt')# , truncation=True, max_length=min_len)
         context_ids = context_tokens.input_ids
-        embeddings = self.decoder.transformer.wte(context_ids)  # (self.args.sample_num, len, embed_size)
-        avg_embedding = torch.mean(embeddings, dim=0)
-        return avg_embedding
+        context_attention_mask = context_tokens.attention_mask.expand(self.args.batch_size, -1).to(self.args.device)
+        context_ids = context_ids.expand(self.args.batch_size, -1).to(self.args.device)
+        embedding = self.decoder.transformer.wte(context_ids)  # (self.args.sample_num, len, embed_size)
+        # avg_embedding = torch.mean(embedding, dim=0)
+        return embedding, context_attention_mask
 
     def forward(self,
         input_ids,
@@ -108,9 +113,8 @@ class BaseLine1(nn.Module):
         control_code=None
         ):
         batch_size = input_ids.shape[0]
-        if attention_mask is None:
-            prompt_attn = torch.ones(batch_size, self.prompt_len).bool().to(input_ids.device)
-            attention_mask = torch.cat([prompt_attn, attention_mask], dim=1)
+        prompt_attn = torch.ones(batch_size, self.prompt_len).bool().to(input_ids.device)
+        eos_token_mask = torch.tensor([1]).expand(batch_size, 1).to(input_ids.device)
 
         # use inputs_embeds directly pass an embedded representation
         inputs_embeds = self.decoder.transformer.wte(input_ids)
@@ -122,12 +126,16 @@ class BaseLine1(nn.Module):
         # choose 25% train data, add context with contrary attribute between inputs embeds and prompt embeds
         self.context = False
         if random.random() < 0.25:
-            context_embeds = self.get_context_embedding('sentiment', labels[self.args.label])
+            context_embeds, context_attention_mask = self.get_context_embedding('sentiment', labels[self.args.label])
             inputs_embeds = torch.cat((context_embeds, inputs_embeds), dim=1)
+            attention_mask = torch.cat([prompt_attn, eos_token_mask, context_attention_mask, attention_mask], dim=1)
             self.context = True
+        else:    
+            attention_mask = torch.cat([prompt_attn, eos_token_mask, attention_mask], dim=1)
         inputs_embeds = torch.cat((prompt_embeds, inputs_embeds), dim=1)
 
         # GPT2 output: transformers.modeling_outputs.CausalLMOutputWithCrossAttentions
+        print(inputs_embeds.shape, attention_mask.shape)
         outputs = self.decoder(  
             inputs_embeds=inputs_embeds, attention_mask=attention_mask, 
             past_key_values=past_key_values, return_dict=return_dict, # labels=input_ids, 

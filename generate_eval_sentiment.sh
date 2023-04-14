@@ -1,5 +1,5 @@
 # bash
-alpha=(1.2 1.5 2.0)
+alpha=(2.5 3.0)
 method="DExperts"
 
 for i in ${alpha[@]}

@@ -105,14 +105,22 @@ def generate_eval(args, model, prompts):
         elif args.method == "prompt_tuning":
             prompt_mask = torch.tensor([1] * args.prompt_len).expand(args.batch_size, args.prompt_len).to(args.device)
             attention_mask = torch.cat([prompt_mask, attention_mask], dim=1)
-
+            
         # do generation
-        output = model.generate(
-                input_ids=input_ids, attention_mask=attention_mask, 
-                repetition_penalty=rp, do_sample=do_sample, 
-                top_k=topk, top_p=topp, temperature=temperature, 
-                max_length=max_len, min_length=min_len, use_cache=use_cache
-            )
+        if args.method == 'DExperts':
+            output = model.generate(
+                    input_ids=input_ids, attention_mask=attention_mask, 
+                    repetition_penalty=rp, do_sample=do_sample, 
+                    top_k=topk, top_p=topp, temperature=temperature, alpha=args.alpha,  # alpha to control experts
+                    max_length=max_len, min_length=min_len, use_cache=use_cache
+                )
+        else:
+            output = model.generate(
+                    input_ids=input_ids, attention_mask=attention_mask, 
+                    repetition_penalty=rp, do_sample=do_sample, 
+                    top_k=topk, top_p=topp, temperature=temperature, 
+                    max_length=max_len, min_length=min_len, use_cache=use_cache
+                )
         # output without the context
         output = tokenizer.batch_decode(output.cpu(), skip_special_tokens=True)
         results_withprompt.extend(output)
@@ -120,7 +128,6 @@ def generate_eval(args, model, prompts):
             prompts_to_output.append(output[i][:context_len])
             output[i] = output[i][context_len:]
         results.extend(output)
-
 
     # perplexity
     ppl = cal_ppl(results_withprompt, args.device)
@@ -270,7 +277,10 @@ if __name__ == '__main__':
     for i in range(0, 3):
         avgdist[i] = positive_dist[i]*0.25 + neutral_dist[i]*0.5 + negative_dist[i]*0.25
 
-    save_path = os.path.join(args.output_dir, '{}/{}_len{}_topk{}.jsonl'.format(args.method, args.label, max_len, topk))
+    if args.method == 'DExperts':
+        save_path = os.path.join(args.output_dir, '{}/{}_len{}_topk{}_alpha{}.jsonl'.format(args.method, args.label, max_len, topk, args.alpha))
+    else:
+        save_path = os.path.join(args.output_dir, '{}/{}_len{}_topk{}.jsonl'.format(args.method, args.label, max_len, topk))
 
     results = positive_results + neutral_results + negative_results
     prompts = positive_prompts + neutral_prompts + negative_prompts
