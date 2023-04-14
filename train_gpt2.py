@@ -5,6 +5,7 @@ from torch.utils.data import Dataset, DataLoader
 from torch.nn import CrossEntropyLoss
 from baseGPTmodel.prefix_tuning import PrefixGPT2
 from baseGPTmodel.prompt_tuning import PromptTuning
+from contextAware.baseline1 import BaseLine1
 
 from tqdm import tqdm, trange
 import logging
@@ -172,6 +173,8 @@ def main(args):
         model = PrefixGPT2(decoder=decoder, decoder_tokenizer=tokenizer, args=args)
     elif args.method == 'prompt_tuning':
         model = PromptTuning(decoder=decoder, decoder_tokenizer=tokenizer, args=args)
+    elif args.method == 'baseline1':
+        model = BaseLine1(decoder=decoder, decoder_tokenizer=tokenizer, args=args)
     else:
         model = decoder
 
@@ -225,7 +228,7 @@ def main(args):
             if args.method == "prefix_tuning":
                 prefix_mask = torch.tensor([1] * args.prefix_len).expand(args.batch_size, args.prefix_len)
                 attention_mask = torch.cat([prefix_mask, attention_mask], dim=1)
-            if args.method == "prompt_tuning":
+            if args.method in ["prompt_tuning", "baseline1"]:
                 prompt_mask = torch.tensor([1] * args.prompt_len).expand(args.batch_size, args.prompt_len)
                 attention_mask = torch.cat([prompt_mask, attention_mask], dim=1)
                 # control_code = transfer_label(label, tokenizer)
@@ -241,6 +244,11 @@ def main(args):
             logits = output.logits
             if args.method == "prompt_tuning":
                 shift_logits = logits[:, args.prompt_len:-1, :].contiguous()
+            elif args.method == "baseline1":
+                if model.context:  # 如果该batch训练时添加了相反属性的context
+                    shift_logits = logits[:, args.prompt_len + args.sample_num:-1, :].contiguous()
+                else:
+                    shift_logits = logits[:, args.prompt_len:-1, :].contiguous()
             else:
                 shift_logits = logits[:, :-1, :].contiguous()
             labels = input_ids[:, 1:].contiguous()
@@ -320,7 +328,6 @@ def main(args):
 
 if __name__ == "__main__":
     print('start:{}'.format(torch.__version__))
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_path", default="../datasets/IMDb/IMDb.jsonl", type=str)
     parser.add_argument("--dev_path", default="../datasets/AGNEWS/train.jsonl", type=str)
@@ -336,6 +343,8 @@ if __name__ == "__main__":
     parser.add_argument("--reparameterize", action="store_true")
     parser.add_argument("--prompt_len", default=10, type=int)
     parser.add_argument("--prompt_mid_size", default=500, type=int)
+    # baseline1
+    parser.add_argument("--sample_num", default=5, type=int)
     
     parser.add_argument("--batch_size", default=4, type=int)
     parser.add_argument("--gradient_accumulation_steps", default=1, type=int)

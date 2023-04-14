@@ -69,8 +69,8 @@ def get_prompts(file):
         dataset = pd.read_json(file, lines=True)
         prompts = pd.json_normalize(dataset['prompt'])['text'].tolist()
         # sample
-        # prompt_num = len(prompts)
-        # prompts = random.sample(prompts, prompt_num // 10)
+        prompt_num = len(prompts)
+        prompts = random.sample(prompts, prompt_num // 10)
         return prompts
 
 
@@ -132,8 +132,9 @@ def generate_eval(args, model, prompts):
     classifier.to(args.device)
     accuracy = eval_classify_acc(results, classifier, cls_tokenizer, class_num, target, args.device)    
     # dist-n 由于评估时间过长，sample十分之一进行评测
-    lens = len(results) // 10
-    result_sample = random.sample(results, lens)
+    # lens = len(results) // 10
+    # result_sample = random.sample(results, lens)
+    result_sample = results
     dist = [0] * 3
     for n in range(1, 4):
         dist[n-1] = calc_dist_n(result_sample, n)
@@ -240,6 +241,8 @@ if __name__ == '__main__':
         condition_model = ClassificationHead(class_size=5, embed_size=1024).to(args.device)
         condition_model.load_state_dict(torch.load(args.condition_model))
         model = Fudge(args=args, base_model = args.pretrained_decoder, tokenizer=tokenizer, condition_model=condition_model)
+    elif args.method == 'baseline1':
+        model = BaseLine1(decoder=decoder, decoder_tokenizer=tokenizer, args=args)
     model.to(args.device)
     model.eval()
 

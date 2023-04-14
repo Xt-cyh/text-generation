@@ -18,17 +18,10 @@ import os
 
 SMALL_CONST = 1e-10
 BIG_CONST = -1e15
-
-
-def get_context_data(mode, label):
-    datalist = []
-    if mode == 'sentiment':
-        with open('../../datasets/SST/SST.jsonl', 'r') as f:
-            for line in f:
-                data = json.loads(line.strip())
-                if data['label'] == 'label':
-                    datalist.append(data['text'])
-    return datalist
+labels = {
+    'positive': 1, 'negative': 0, 'world':1,
+    'sport': 2, 'business':3, 'science':4
+}
 
 
 class BaseLine1(nn.Module):
@@ -86,6 +79,26 @@ class BaseLine1(nn.Module):
         for param in self.decoder.parameters():
             param.requires_grad = False
 
+    def get_context_embedding(self, mode, label):
+        datalist = []
+        if mode == 'sentiment':
+            with open('../../datasets/SST/SST.jsonl', 'r') as f:
+                for line in f:
+                    data = json.loads(line.strip())
+                    if data['label'] == 'label':
+                        datalist.append(data['text'])
+
+        choice = random.sample(datalist, self.args.sample_num)
+        min_len = min(len(s) for s in choice)
+        for i in range(self.args.sample_num):
+            choice[i] = choice[i][:min_len]
+        # tokenizer and embedding
+        context_tokens = tokenizer(choice, return_tensors='pt')
+        context_ids = context_tokens.input_ids
+        embeddings = self.decoder.transformer.wte(context_ids)  # (self.args.sample_num, len, embed_size)
+        avg_embedding = torch.mean(embeddings, dim=0)
+        return avg_embedding
+
     def forward(self,
         input_ids,
         attention_mask=None,
@@ -106,7 +119,41 @@ class BaseLine1(nn.Module):
             prompt_embeds = self.trans(prompt_embeds)
 
         # detect whether prompt and context aligned
-        
+        # choose 25% train data, add context with contrary attribute between inputs embeds and prompt embeds
+        self.context = False
+        if random.random < 0.25:
+            context_embeds = self.get_context_embedding('sentiment', labels[args.label], 5)
+            inputs_embeds = torch.cat((context_embeds, inputs_embeds), dim=1)
+            self.context = True
+        inputs_embeds = torch.cat((prompt_embeds, inputs_embeds), dim=1)
+
+        # GPT2 output: transformers.modeling_outputs.CausalLMOutputWithCrossAttentions
+        outputs = self.decoder(  
+            inputs_embeds=inputs_embeds, attention_mask=attention_mask, 
+            past_key_values=past_key_values, return_dict=return_dict, # labels=input_ids, 
+            use_cache=use_cache
+        )
+        return outputs
+
+    def generate_forward(self,
+        input_ids,
+        attention_mask=None,
+        past_key_values=None,
+        use_cache=True,
+        return_dict=True,
+        control_code=None
+        ):
+        batch_size = input_ids.shape[0]
+        if attention_mask is None:
+            prompt_attn = torch.ones(batch_size, self.prompt_len).bool().to(input_ids.device)
+            attention_mask = torch.cat([prompt_attn, attention_mask], dim=1)
+
+        # use inputs_embeds directly pass an embedded representation
+        inputs_embeds = self.decoder.transformer.wte(input_ids)
+        prompt_embeds = self.soft_prompt.weight.repeat(inputs_embeds.size(0), 1, 1)  # bsz prompt_len embed_size
+        if self.reparameterize:
+            prompt_embeds = self.trans(prompt_embeds)
+
         inputs_embeds = torch.cat((prompt_embeds, inputs_embeds), dim=1)
 
         # GPT2 output: transformers.modeling_outputs.CausalLMOutputWithCrossAttentions
@@ -161,7 +208,7 @@ class BaseLine1(nn.Module):
 
         while cur_len <= max_length:
             if past == None:
-                outputs = self.forward(input_ids, attention_mask=attention_mask,
+                outputs = self.generate_forward(input_ids, attention_mask=attention_mask,
                                     control_code=control_code, return_dict=True, use_cache=True)
             else:
                 outputs = self.decoder(input_ids, past_key_values=past, return_dict=True, use_cache=True)
