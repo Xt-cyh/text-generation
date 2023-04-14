@@ -32,7 +32,7 @@ class BaseLine1(nn.Module):
     see https://github.com/kipgparker/soft-prompt-tuning/blob/main/soft_embedding.py
     '''
     def __init__(self, decoder, decoder_tokenizer, args):
-        super(PromptTuning, self).__init__()
+        super(BaseLine1, self).__init__()
         self.decoder = decoder  # GPT2LMHeadModel
 
         self.decoder_config = decoder.config
@@ -82,10 +82,10 @@ class BaseLine1(nn.Module):
     def get_context_embedding(self, mode, label):
         datalist = []
         if mode == 'sentiment':
-            with open('../../datasets/SST/SST.jsonl', 'r') as f:
+            with open('/home/cyh/ctg/codes/datasets/SST/SST.jsonl', 'r') as f:
                 for line in f:
                     data = json.loads(line.strip())
-                    if data['label'] == 'label':
+                    if data['label'] == label:
                         datalist.append(data['text'])
 
         choice = random.sample(datalist, self.args.sample_num)
@@ -121,8 +121,8 @@ class BaseLine1(nn.Module):
         # detect whether prompt and context aligned
         # choose 25% train data, add context with contrary attribute between inputs embeds and prompt embeds
         self.context = False
-        if random.random < 0.25:
-            context_embeds = self.get_context_embedding('sentiment', labels[args.label], 5)
+        if random.random() < 0.25:
+            context_embeds = self.get_context_embedding('sentiment', labels[self.args.label])
             inputs_embeds = torch.cat((context_embeds, inputs_embeds), dim=1)
             self.context = True
         inputs_embeds = torch.cat((prompt_embeds, inputs_embeds), dim=1)
