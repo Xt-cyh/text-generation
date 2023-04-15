@@ -248,8 +248,8 @@ def main(args):
             if args.method == "prompt_tuning":
                 shift_logits = logits[:, args.prompt_len:-1, :].contiguous()
             elif args.method == "baseline1":
-                if model.context:  # 如果该batch训练时添加了相反属性的context
-                    shift_logits = logits[:, args.prompt_len + args.sample_num:-1, :].contiguous()
+                if model.context_len is not None:  # 如果该batch训练时添加了相反属性的context
+                    shift_logits = logits[:, args.prompt_len + model.context_len:-1, :].contiguous()
                 else:
                     shift_logits = logits[:, args.prompt_len:-1, :].contiguous()
             else:

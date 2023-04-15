@@ -102,7 +102,9 @@ class BaseLine1(nn.Module):
         context_ids = context_ids.expand(self.args.batch_size, -1).to(self.args.device)
         embedding = self.decoder.transformer.wte(context_ids)  # (self.args.sample_num, len, embed_size)
         # avg_embedding = torch.mean(embedding, dim=0)
-        return embedding, context_attention_mask
+        context_len = int(context_ids.shape[1])
+        # 需要return （写在self.context_len中）
+        return embedding, context_attention_mask, context_len
 
     def forward(self,
         input_ids,
@@ -124,18 +126,17 @@ class BaseLine1(nn.Module):
 
         # detect whether prompt and context aligned
         # choose 25% train data, add context with contrary attribute between inputs embeds and prompt embeds
-        self.context = False
+        self.context_len = None
         if random.random() < 0.25:
-            context_embeds, context_attention_mask = self.get_context_embedding('sentiment', labels[self.args.label])
+            context_embeds, context_attention_mask, context_len = self.get_context_embedding('sentiment', labels[self.args.label])
             inputs_embeds = torch.cat((context_embeds, inputs_embeds), dim=1)
-            attention_mask = torch.cat([prompt_attn, eos_token_mask, context_attention_mask, attention_mask], dim=1)
-            self.context = True
+            attention_mask = torch.cat([prompt_attn, context_attention_mask, eos_token_mask, attention_mask], dim=1)
+            self.context_len = context_len
         else:    
             attention_mask = torch.cat([prompt_attn, eos_token_mask, attention_mask], dim=1)
         inputs_embeds = torch.cat((prompt_embeds, inputs_embeds), dim=1)
 
         # GPT2 output: transformers.modeling_outputs.CausalLMOutputWithCrossAttentions
-        print(inputs_embeds.shape, attention_mask.shape)
         outputs = self.decoder(  
             inputs_embeds=inputs_embeds, attention_mask=attention_mask, 
             past_key_values=past_key_values, return_dict=return_dict, # labels=input_ids, 
