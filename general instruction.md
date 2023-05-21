@@ -152,3 +152,5 @@ few-shot prompt
 &nbsp;
 
 #### Filter the instructions
+1. 较为重复的
+2. 质量低的
