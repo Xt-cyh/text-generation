@@ -131,7 +131,7 @@ few-shot prompt
   
   - （use edit example）
     
-    I want to diversify the representation of instructions that ~~(control the sentiment of requesting to)~~ request to generate texts with certain sentiments.
+    I want to diversify the representation of instructions that request to generate texts with certain sentiments.
     
     To diversify the instructions, you can try different methods, not limited to the given example: 
     
