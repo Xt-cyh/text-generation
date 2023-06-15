@@ -61,6 +61,7 @@ class PromptTuning(nn.Module):
         self.label = self.decoder_tokenizer(args.label, return_tensors='pt')
         # reparameterize (optional)
         self.reparameterize = args.reparameterize
+        # add a linear layer to reparameterize
         self.trans = nn.Sequential(
             nn.Linear(self.decoder_hidden_size, self.decoder_hidden_size),
             nn.Tanh(),
